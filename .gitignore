@@ -12,6 +12,9 @@ BackendRust/Cargo.lock
 .idea/
 *.swp
 *.log
+*.zip
+*.tar.gz
+*.tar
 
 
 .DS_Store
