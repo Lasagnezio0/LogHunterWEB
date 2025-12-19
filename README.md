@@ -34,7 +34,7 @@ Monitoraggio ricerca in tempo reale via WebSocket, navigazione risultati e visua
 
 ```bash
 # Build Rust core
-cd rust_core && cargo build --release
+cd BackendRust && cargo build --release
 
 # Avvia backend
 mvn clean install && mvn spring-boot:run
