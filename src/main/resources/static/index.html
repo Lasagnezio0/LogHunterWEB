@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogHunter Enterprise Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05); border: none; border-radius: 12px; height: 100%; }
+
+        .log-container {
+            max-height: 150px; overflow: hidden; background-color: #1e1e1e; border-radius: 6px; padding: 8px; position: relative;
+        }
+        .log-container::after {
+            content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 30px;
+            background: linear-gradient(transparent, #1e1e1e); pointer-events: none;
+        }
+        .log-line { font-family: 'Consolas', monospace; font-size: 0.8rem; color: #d4d4d4; display: block; white-space: pre-wrap; margin-bottom: 2px; border-bottom: 1px solid #333;}
+        
+        .highlight-line {
+            background-color: rgba(60, 0, 0, 0.5); color: #ffcccc; display: block; width: 100%; padding: 2px 5px;
+            border-left: 3px solid #800000; scroll-margin-top: 150px;
+        }
+        .highlight-line.active-match {
+            background-color: rgba(255, 193, 7, 0.25) !important; border-left: 6px solid #ffc107 !important;
+            border-right: 6px solid #ffc107 !important; color: #ffffff !important; box-shadow: 0 0 15px rgba(255, 193, 7, 0.4);
+            z-index: 10; position: relative;
+        }
+
+        .modal-content { border-radius: 12px; overflow: hidden; border: none; }
+        .modal-header { background-color: #252526; color: white; border-bottom: 1px solid #3e3e42; }
+        .modal-body { background-color: #1e1e1e; color: #d4d4d4; padding: 0; }
+        #modalLogContent { font-family: 'Consolas', monospace; font-size: 0.9rem; white-space: pre-wrap; padding: 15px; max-height: 70vh; overflow-y: auto; }
+        .col-filename { font-weight: 600; color: #343a40; font-size: 0.95rem; }
+        .btn-expand { position: absolute; bottom: 5px; right: 5px; z-index: 10; padding: 2px 8px; font-size: 0.8rem; }
+
+        .custom-num-input {
+            background-color: transparent; border: none; border-bottom: 2px solid #6c757d;
+            color: #ffffff !important; text-align: center; width: 50px; font-weight: bold; font-size: 1rem; padding: 0;
+            -moz-appearance: textfield;
+        }
+        .custom-num-input:focus { outline: none; border-bottom: 2px solid #ffc107; background-color: rgba(255, 255, 255, 0.1); }
+        .modal-text-label { color: #adb5bd; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .control-box { background-color: #2b2b2b; border: 1px solid #444; border-radius: 6px; padding: 4px 10px; display: flex; align-items: center; }
+        
+        .btn-outline-info:disabled, .btn-outline-warning:disabled {
+            opacity: 0.3; cursor: not-allowed; border-color: #444; color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid px-4 py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+            <div>
+                <h2 class="fw-bold text-primary m-0"><i class="fas fa-shield-alt"></i> LogHunter <span class="text-dark">Web</span></h2>
+                <small class="text-muted">High Performance Log Engine</small>
+            </div>
+            <div>
+                <span class="badge bg-dark"><i class="fab fa-rust"></i> Rust Core</span>
+                <span class="badge bg-primary"><i class="fab fa-java"></i> Java Parallel</span>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-lg-8 mb-4 mb-lg-0">
+                <div class="card p-4">
+                    <h5 class="card-title text-primary mb-3"><i class="fas fa-search"></i> Parametri Ricerca</h5>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Motore</label>
+                            <select id="engine" class="form-select bg-light"><option value="RUST" selected>🦀 Rust (Fast)</option></select>
+                        </div>
+                        <div class="col-md-3"><label class="form-label">Dal</label><input type="date" id="start" class="form-control" value="2023-01-01"></div>
+                        <div class="col-md-3"><label class="form-label">Al</label><input type="date" id="end" class="form-control" value="2025-12-31"></div>
+                        <div class="col-md-3"><label class="form-label">URL Logs</label><input type="text" id="url" class="form-control" value="http://localhost:8000"></div>
+                        <div class="col-md-12">
+                            <label class="form-label">Parola Chiave</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white"><i class="fas fa-key"></i></span>
+                                <input type="text" id="keyword" class="form-control form-control-lg" value="FATALE" placeholder="Es. ERROR, Exception...">
+                                <button id="btnSearch" class="btn btn-primary px-4 fw-bold" onclick="searchLogs()">CERCA</button>
+                                <button id="btnStop" class="btn btn-danger px-4 fw-bold" onclick="stopSearch()" disabled>STOP 🛑</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card p-4 border-top border-4 border-success d-flex flex-column">
+                    <div>
+                        <h5 class="card-title text-success mb-3"><i class="fas fa-download"></i> Download</h5>
+                        <p class="text-muted small mb-3">Scarica i log originali.</p>
+                        <div class="row g-2">
+                            <div class="col-6"><label class="form-label small">Inizio</label><input type="date" id="dl_start" class="form-control form-control-sm" onchange="checkDownloadForm()"></div>
+                            <div class="col-6"><label class="form-label small">Fine</label><input type="date" id="dl_end" class="form-control form-control-sm" onchange="checkDownloadForm()"></div>
+                        </div>
+                    </div>
+                    <div class="d-grid gap-2 mt-auto pt-3"><button id="btnDownload" class="btn btn-success" onclick="downloadLogs()" disabled>SCARICA ARCHIVIO</button></div>
+                    <div class="mt-2 text-center" style="min-height: 25px;"><span id="dlStatus" class="status-msg small"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div id="loading" class="text-center my-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <p class="mt-2 text-muted fw-bold">Scansione live...</p>
+                </div>
+                <div class="card p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h4 class="m-0">Risultati <span id="resCount" class="badge bg-secondary align-middle fs-6">0</span></h4>
+                        <span id="timeTaken" class="badge bg-warning text-dark fs-6" style="display:none;"></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-bordered align-middle table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th class="col-filename">File</th>
+                                    <th style="width: 80px;" class="text-center">Occ.</th>
+                                    <th>Anteprima Match</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modale visualizzazione log -->
+    <div class="modal fade" id="logModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header d-flex justify-content-between align-items-center py-2 bg-dark border-secondary">
+                    <div class="d-flex align-items-center" style="max-width: 25%; overflow: hidden;">
+                        <h5 class="modal-title text-truncate mb-0 text-white" id="modalTitle" style="font-size: 1rem;">File</h5>
+                    </div>
+
+                    <div class="d-flex gap-2 justify-content-center flex-grow-1">
+                        <!-- Navigazione match -->
+                        <div class="control-box" id="matchNavBox">
+                            <span class="modal-text-label me-2">Match:</span>
+                            <button class="btn btn-sm btn-outline-warning p-0 px-2 border-0" onclick="prevMatch()"><i class="fas fa-chevron-up"></i></button>
+                            <div class="mx-2 d-flex align-items-center">
+                                <input type="number" id="matchInput" class="custom-num-input" value="0" min="1" onchange="jumpToMatch()" onkeydown="if(event.key==='Enter') jumpToMatch()">
+                                <span class="mx-1 text-secondary">/</span>
+                                <span id="matchTotal" class="text-white fw-bold">0</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline-warning p-0 px-2 border-0" onclick="nextMatch()"><i class="fas fa-chevron-down"></i></button>
+                        </div>
+
+                        <!-- Paginazione (caricamento parziale) -->
+                        <div class="control-box border-info" id="pageNavBox" style="display:none;">
+                            <span class="modal-text-label me-2 text-info" id="pageSizeLabel">PAGINA (10MB):</span>
+                            <button id="btnPrevPage" class="btn btn-sm btn-outline-info p-0 px-2 border-0" onclick="changePage(-1)"><i class="fas fa-chevron-left"></i></button>
+                            <div class="mx-2"><span id="pageDisplay" class="text-white fw-bold fs-6">1</span></div>
+                            <button id="btnNextPage" class="btn btn-sm btn-outline-info p-0 px-2 border-0" onclick="changePage(1)"><i class="fas fa-chevron-right"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="fileSizeBadge" class="badge bg-secondary">-- MB</span>
+                        <button id="btnLoadFull" class="btn btn-sm btn-light fw-bold" onclick="enableFullMode()">
+                            <i class="fas fa-file-invoice"></i> File Intero
+                        </button>
+                        <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                </div>
+                <div class="modal-body bg-black">
+                    <div id="modalLogContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentSocket = null;
+        let userStopped = false;
+        let currentModalFileDisplay = ""; 
+        let currentMatchesElements = [];
+        let currentMatchIndex = -1;
+        let isFullMode = false;
+        let currentPage = 0;
+        const PAGE_SIZE = 20 * 1024 * 1024; // 20MB per blocco
+
+        function stopSearch() { if (currentSocket) { userStopped = true; currentSocket.close(); } }
+        
+        function checkDownloadForm() {
+            const d1 = document.getElementById('dl_start').value;
+            const d2 = document.getElementById('dl_end').value;
+            document.getElementById('btnDownload').disabled = !(d1 && d2);
+        }
+
+        async function downloadLogs() { alert("Download avviato..."); }
+
+        function searchLogs() {
+            const tbody = document.getElementById('resultsBody');
+            const loader = document.getElementById('loading');
+            const btnSearch = document.getElementById('btnSearch');
+            const btnStop = document.getElementById('btnStop');
+
+            tbody.innerHTML = '';
+            loader.style.display = 'block';
+            document.getElementById('resCount').innerText = '0';
+            document.getElementById('timeTaken').style.display = 'none';
+            btnSearch.disabled = true;
+            btnStop.disabled = false;
+            userStopped = false;
+
+            if (currentSocket) currentSocket.close();
+
+            const params = {
+                engine: document.getElementById('engine').value,
+                startDate: document.getElementById('start').value,
+                endDate: document.getElementById('end').value,
+                logUrl: document.getElementById('url').value,
+                keyword: document.getElementById('keyword').value
+            };
+
+            currentSocket = new WebSocket(`ws://${window.location.host}/ws/search`);
+            if(!window.logCache) window.logCache = {};
+            let matchCount = 0;
+            const fileCounts = {};
+
+            currentSocket.onopen = () => currentSocket.send(JSON.stringify(params));
+
+            currentSocket.onmessage = (event) => {
+                const item = JSON.parse(event.data);
+                if (item.type === 'match') {
+                    matchCount++;
+                    document.getElementById('resCount').innerText = matchCount;
+                    fileCounts[item.filename] = (fileCounts[item.filename] || 0) + 1;
+                    addResultRow(tbody, item, fileCounts[item.filename]);
+                } else if (item.type === 'end') {
+                    finishSearch();
+                    if(item.elapsed_seconds) {
+                        const tb = document.getElementById('timeTaken');
+                        tb.innerText = `⏱ ${item.elapsed_seconds.toFixed(3)}s`;
+                        tb.style.display = 'inline-block';
+                    }
+                } else if (item.type === 'error') {
+                    tbody.innerHTML += `<tr><td colspan="3" class="text-danger fw-bold">⚠️ ${escapeHtml(item.message)}</td></tr>`;
+                    finishSearch();
+                }
+            };
+
+            currentSocket.onclose = () => {
+                finishSearch();
+                if (userStopped) tbody.innerHTML += `<tr><td colspan="3" class="text-center text-danger">🛑 Interrotto dall'utente.</td></tr>`;
+                else if (matchCount === 0 && tbody.innerHTML === '') tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-5">Nessun match trovato.</td></tr>`;
+            };
+        }
+
+        function finishSearch() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('btnSearch').disabled = false;
+            document.getElementById('btnStop').disabled = true;
+        }
+
+        function addResultRow(tbody, item, countForFile) {
+            let rowId = "file-row-" + item.filename.replace(/[^a-zA-Z0-9]/g, '_');
+            let fileRow = document.getElementById(rowId);
+            const highlightedPreview = applyHighlight(item.matches_preview);
+
+            if (!fileRow) {
+                const tr = document.createElement('tr');
+                tr.id = rowId;
+                tr.dataset.filename = item.filename;
+                window.logCache[rowId] = [item.matches_preview];
+
+                tr.insertAdjacentHTML('beforeend', `
+                    <td class="col-filename"><i class="far fa-file-alt text-muted me-2"></i>${item.filename}</td>
+                    <td class="text-center"><span class="badge bg-secondary rounded-pill badge-count">1</span></td>
+                    <td style="position: relative;">
+                        <div class="log-container">${highlightedPreview}</div>
+                        <button class="btn btn-primary btn-expand shadow-sm" onclick="openModal('${rowId}')"><i class="fas fa-expand-alt"></i> ESPANDI</button>
+                    </td>
+                `);
+                tbody.appendChild(tr);
+            } else {
+                const container = fileRow.querySelector('.log-container');
+                container.insertAdjacentHTML('beforeend', highlightedPreview);
+                window.logCache[rowId].push(item.matches_preview);
+                const badge = fileRow.querySelector('.badge-count');
+                if (countForFile >= 100) {
+                    badge.innerText = "99+";
+                    badge.className = "badge bg-danger rounded-pill badge-count";
+                } else {
+                    badge.innerText = countForFile;
+                }
+            }
+        }
+
+        const modal = new bootstrap.Modal(document.getElementById('logModal'));
+
+        function openModal(rowId) {
+            const row = document.getElementById(rowId);
+            currentModalFileDisplay = row.dataset.filename;
+            document.getElementById('modalTitle').innerText = currentModalFileDisplay.replace(/^(zip|tar):/, '');
+            
+            document.getElementById('fileSizeBadge').innerText = ""; 
+            document.getElementById('matchNavBox').style.display = 'flex';
+            document.getElementById('pageNavBox').style.display = 'none';
+            document.getElementById('btnLoadFull').style.display = 'block';
+            
+            isFullMode = false;
+            renderModalContent((window.logCache[rowId] || []).join("\n"));
+            modal.show();
+        }
+
+        function enableFullMode() {
+            isFullMode = true;
+            currentPage = 0;
+            document.getElementById('btnLoadFull').style.display = 'none';
+            document.getElementById('pageNavBox').style.display = 'flex';
+            fetchPage();
+        }
+
+        async function fetchPage() {
+            const contentDiv = document.getElementById('modalLogContent');
+            const urlBase = document.getElementById('url').value;
+            document.getElementById('pageDisplay').innerText = currentPage + 1;
+            
+            document.getElementById('btnPrevPage').disabled = true;
+            document.getElementById('btnNextPage').disabled = true;
+
+            contentDiv.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-info"></div><br>Caricamento blocco...</div>';
+
+            let archiveUrl = "", subFile = "";
+            let rawFilename = currentModalFileDisplay;
+
+            if (rawFilename.includes(" > ")) {
+                const parts = rawFilename.split(" > ");
+                archiveUrl = urlBase.endsWith('/') ? urlBase + parts[0] : urlBase + '/' + parts[0];
+                subFile = parts[1];
+            } else {
+                archiveUrl = urlBase.endsWith('/') ? urlBase + rawFilename : urlBase + '/' + rawFilename;
+            }
+
+            try {
+                let apiUrl = `/api/view?fileUrl=${encodeURIComponent(archiveUrl)}&page=${currentPage}&size=${PAGE_SIZE}`;
+                if (subFile) apiUrl += `&subPath=${encodeURIComponent(subFile)}`;
+
+                const res = await fetch(apiUrl);
+                const sizeHeader = res.headers.get("X-File-Size");
+                if (sizeHeader) {
+                    document.getElementById('fileSizeBadge').innerText = (parseInt(sizeHeader) / (1024 * 1024)).toFixed(1) + " MB";
+                }
+
+                let text = await res.text();
+                document.getElementById('btnPrevPage').disabled = (currentPage === 0);
+                document.getElementById('btnNextPage').disabled = (text.length < PAGE_SIZE);
+                renderModalContent(text);
+            } catch (e) {
+                contentDiv.innerHTML = `<div class="text-danger p-3">Errore: ${e.message}</div>`;
+            }
+        }
+
+        function changePage(delta) { currentPage += delta; fetchPage(); }
+
+        function renderModalContent(text) {
+            document.getElementById('modalLogContent').innerHTML = applyHighlight(text);
+            initMatchNavigation();
+        }
+
+        function initMatchNavigation() {
+            currentMatchesElements = document.querySelectorAll('#modalLogContent .highlight-line');
+            document.getElementById('matchTotal').innerText = currentMatchesElements.length;
+            if (currentMatchesElements.length > 0) {
+                currentMatchIndex = 0; scrollToMatch();
+            } else {
+                currentMatchIndex = -1; document.getElementById('matchInput').value = 0;
+            }
+        }
+
+        function nextMatch() {
+            if (!currentMatchesElements.length) return;
+            currentMatchesElements[currentMatchIndex].classList.remove('active-match');
+            currentMatchIndex = (currentMatchIndex + 1) % currentMatchesElements.length;
+            scrollToMatch();
+        }
+
+        function prevMatch() {
+            if (!currentMatchesElements.length) return;
+            currentMatchesElements[currentMatchIndex].classList.remove('active-match');
+            currentMatchIndex = (currentMatchIndex - 1 + currentMatchesElements.length) % currentMatchesElements.length;
+            scrollToMatch();
+        }
+
+        function jumpToMatch() {
+            let idx = parseInt(document.getElementById('matchInput').value) - 1;
+            if (isNaN(idx) || !currentMatchesElements.length) return;
+            if (currentMatchIndex >= 0) currentMatchesElements[currentMatchIndex].classList.remove('active-match');
+            currentMatchIndex = Math.max(0, Math.min(idx, currentMatchesElements.length - 1));
+            scrollToMatch();
+        }
+
+        function scrollToMatch() {
+            const el = currentMatchesElements[currentMatchIndex];
+            el.classList.add('active-match');
+            document.getElementById('matchInput').value = currentMatchIndex + 1;
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function applyHighlight(rawText) {
+            const keyword = document.getElementById('keyword').value.toLowerCase();
+            if (!keyword || !rawText) return escapeHtml(rawText);
+            return rawText.split('\n').map(line => {
+                const safe = escapeHtml(line);
+                return line.toLowerCase().includes(keyword) ? `<span class="highlight-line">${safe}</span>` : `<span class="log-line">${safe}</span>`;
+            }).join('');
+        }
+
+        function escapeHtml(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    </script>
+</body>
+</html>

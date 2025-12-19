@@ -1,0 +1,17 @@
+
+target/
+*.class
+.mtj.tmp/
+
+
+BackendRust/target/
+BackendRust/Cargo.lock
+
+
+.vscode/
+.idea/
+*.swp
+*.log
+
+
+.DS_Store
